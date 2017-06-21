@@ -1,5 +1,5 @@
 all:tst.o libadd.so
-	gcc tst.o  -L ./ -ladd -lsub  -o a.out
+	gcc tst.o -Wl,-rpath=./ -L ./ -ladd -lsub  -o a.out
 
 tst.o:tst.c 
 	gcc -c tst.c -o tst.o
