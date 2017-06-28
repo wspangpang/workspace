@@ -1,51 +1,90 @@
 #include <gst/gst.h>
-#include <string.h>
-void error_quit(GstBus *bus,GstMessage *message,GMainLoop *loop)
+#include <glib.h>
+//定义消息处理函数,
+static gboolean bus_call(GstBus *bus,GstMessage *msg,gpointer data)
 {
-    GError *error;
-    gst_message_parse_error(message,&error,NULL);
-    printf("Error:%s\n",error->message);
-    g_main_loop_quit(loop);
+    GMainLoop *loop = (GMainLoop *) data;//这个是主循环的指针，在接受EOS消息时退出循环
+    switch (GST_MESSAGE_TYPE(msg))
+    {
+        case GST_MESSAGE_EOS:
+            g_print("End of stream\n");
+            g_main_loop_quit(loop);
+            break;
+        case GST_MESSAGE_ERROR:
+        {
+               gchar *debug;
+               GError *error;
+               gst_message_parse_error(msg,&error,&debug);
+               g_free(debug);
+               g_printerr("ERROR:%s\n",error->message);
+               g_error_free(error);
+               g_main_loop_quit(loop);
+                break;
+        }
+        default:
+             break;
+    }
+    return TRUE;
 }
-void end_of_streamer(GstBus *bus,GstMessage *message,GMainLoop *loop)
-{
-    printf("End Of Streamer. . .\n");
-    g_main_loop_quit(loop);
-}
-void print_pos(GstElement *pipe)
-{
-    GstFormat fm=GST_FORMAT_TIME;
-    gint64 pos,len;
-    gst_element_query_position(pipe,&fm,&pos);
-    gst_element_query_duration(pipe,&fm,&len);
-    printf("Time:%u:%02u:%02u/%u:%02u:%02u:%02u\n",GST_TIME_ARGS(pos),GST_TIME_ARGS(len));
-}
-int main(int argc,char **argv)
+
+int main(int argc,char *argv[])
 {
     GMainLoop *loop;
-    GstElement *playpipe;
-    //GstElement *source;
+    GstElement *pipeline,*source,*decoder,*sink;//定义组件
     GstBus *bus;
-    //gchar *file_name;
+
     gst_init(&argc,&argv);
-    loop=g_main_loop_new(NULL,FALSE);
-    playpipe=gst_element_factory_make("playbin","play-source");
-    //playpipe=gst_pipeline_new("play-pipe");
-    //gst_bin_add(GST_BIN(playpipe),source);
-    //gst_element_link(playpipe,source);
-    //g_object_set(G_OBJECT(playpipe),"location",argv[1],NULL);
-    //file_name=malloc(sizeof(gchar)*7+strlen(argv[1])+1);
-    //strcpy(file_name,"file://");
-    //strcat(file_name,argv[1]);
-    g_object_set(G_OBJECT(playpipe),"uri",argv[1],NULL);
-    bus=gst_pipeline_get_bus(GST_PIPELINE(playpipe));
-    gst_bus_add_signal_watch(bus);
-    g_signal_connect(G_OBJECT(bus),"message::error",G_CALLBACK(error_quit),loop);
-    g_signal_connect(G_OBJECT(bus),"message::eos",G_CALLBACK(end_of_streamer),loop);
-    printf("Start. . .\n");
-    gst_element_set_state(playpipe,GST_STATE_PLAYING);
-    g_timeout_add(1000,(void *)print_pos,playpipe);
+    loop = g_main_loop_new(NULL,FALSE);//创建主循环，在执行 g_main_loop_run后正式开始循环
+
+    if(argc != 2)
+    {
+        g_printerr("Usage:%s <mp3 filename>\n",argv[0]);
+        return -1;
+    }
+    //创建管道和组件
+    pipeline = gst_pipeline_new("audio-player");
+    if(!pipeline) {
+        g_printerr("pipeline error\n");
+        return -1;
+    }       
+    source = gst_element_factory_make("filesrc","file-source");
+    if(!source) {
+        g_printerr("source error\n");
+        return -1;
+    }  
+    decoder = gst_element_factory_make("mad","mad-decoder");
+    if(!decoder) {
+        g_printerr("decoder error\n");
+        return -1;
+    }  
+    sink = gst_element_factory_make("autoaudiosink","audio-output");
+    if(!sink) {
+        g_printerr("sink error\n");
+        return -1;
+    }  
+
+    if(!pipeline||!source||!decoder||!sink){
+        g_printerr("One element could not be created.Exiting.\n");
+        return -1;
+    }
+    //设置 source的location 参数。即 文件地址.
+    g_object_set(G_OBJECT(source),"location",argv[1],NULL);
+    //得到 管道的消息总线
+    bus = gst_pipeline_get_bus(GST_PIPELINE(pipeline));
+   //添加消息监视器
+    gst_bus_add_watch(bus,bus_call,loop);
+    gst_object_unref(bus);
+    //把组件添加到管道中.管道是一个特殊的组件，可以更好的让数据流动
+    gst_bin_add_many(GST_BIN(pipeline),source,decoder,sink,NULL);
+   //依次连接组件
+   gst_element_link_many(source,decoder,sink,NULL);
+   //开始播放
+    gst_element_set_state(pipeline,GST_STATE_PLAYING);
+    g_print("Running\n");
+    //开始循环
     g_main_loop_run(loop);
-    gst_element_set_state(playpipe,GST_STATE_NULL);
+    g_print("Returned,stopping playback\n");
+    gst_element_set_state(pipeline,GST_STATE_NULL);
+    gst_object_unref(GST_OBJECT(pipeline));
     return 0;
 }
