@@ -5,7 +5,7 @@
 #include <gst/gst.h>
 #include <gdk/gdkx.h>
 #include <gtk/gtk.h>
-//#include <gst/interfaces/xoverlay.h>
+#include <gst/interfaces/xoverlay.h>
 #include <string.h>
 
 #include "main.h"
