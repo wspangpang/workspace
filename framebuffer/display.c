@@ -6,7 +6,6 @@
 #include <linux/fb.h>  
 #include <sys/mman.h>  
 #include <sys/ioctl.h>  
-#include <arpa/inet.h>  
   
   
 //14byte文件头  
@@ -26,7 +25,7 @@ typedef struct
     long ciWidth;//宽度  
     long ciHeight;//高度  
     char ciPlanes[2];//目标设备的位平面数，值为1  
-    int ciBitCount;//每个像素的位数  
+    unsigned short int ciBitCount;//每个像素的位数  
     char ciCompress[4];//压缩说明  
     char ciSizeImage[4];//用字节表示的图像大小，该数据必须是4的倍数  
     char ciXPelsPerMeter[4];//目标设备的水平像素数/米  
@@ -34,13 +33,15 @@ typedef struct
     char ciClrUsed[4]; //位图使用调色板的颜色数  
     char ciClrImportant[4]; //指定重要的颜色数，当该域的值等于颜色数时（或者等于0时），表示所有颜色都一样重要  
 }__attribute__((packed)) BITMAPINFOHEADER;  
+
+
   
 typedef struct  
 {  
-    unsigned short blue;  
-    unsigned short green;  
-    unsigned short red;  
-    unsigned short reserved;  
+    char blue;  
+    char green;  
+    char red;  
+	char reserved; 
 }__attribute__((packed)) PIXEL;//颜色模式RGB  
   
 BITMAPFILEHEADER FileHead;  
@@ -153,28 +154,27 @@ int show_bmp()
         fclose( fp );  
         return( -4 );  
     }  
-  
+	printf("InfoHead.ciWidth = %d\n", InfoHead.ciWidth);
+	printf("InfoHead.ciHeight = %d\n", InfoHead.ciHeight);
+	printf("InfoHead.ciBitCount = %d\n", InfoHead.ciBitCount);
     //跳转的数据区  
     fseek(fp, FileHead.cfoffBits, SEEK_SET);  
     //每行字节数  
-    BytesPerLine = (InfoHead.ciWidth * InfoHead.ciBitCount + 31) / 32 * 4;  
-  
+    BytesPerLine = (InfoHead.ciWidth * InfoHead.ciBitCount + 31) / 32 * 4; 
     line_x = line_y = 0;  
-    //向framebuffer中写BMP图片  
+    //向framebuffer中写BMP图片 
+
     while(!feof(fp))  
     {  
-        PIXEL pix;  
-        unsigned short int tmp;  
-        rc = fread( (char *)&pix, 1, sizeof(PIXEL), fp);  
-        if (rc != sizeof(PIXEL))  
-            break;  
+        PIXEL pix;   
+        rc = fread( (char *)&pix, 1, InfoHead.ciBitCount / 8, fp);   
         location = line_x * bits_per_pixel / 8 + (InfoHead.ciHeight - line_y - 1) * xres * bits_per_pixel / 8;  
   
         //显示每一个像素  
         *(fbp + location + 0)=pix.blue;  
         *(fbp + location + 1)=pix.green;  
         *(fbp + location + 2)=pix.red;  
-        *(fbp + location + 3)=pix.reserved;  
+        *(fbp + location + 3)=0;//pix.reserved;  
   
         line_x++;  
         if (line_x == InfoHead.ciWidth )  
@@ -185,6 +185,7 @@ int show_bmp()
                 break;  
         }  
     }  
+
     fclose( fp );  
     return( 0 );  
 }  
